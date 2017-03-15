@@ -217,6 +217,7 @@ var (
 	// Flags
 	s3ACL          = fs.StringP("s3-acl", "", "", "Canned ACL used when creating buckets and/or storing objects in S3")
 	s3StorageClass = fs.StringP("s3-storage-class", "", "", "Storage class to use when uploading S3 objects (STANDARD|REDUCED_REDUNDANCY|STANDARD_IA)")
+	s3Prefix       = fs.StringP("s3-prefix", "", "", "Prefix to append to root path for limiting scope")
 )
 
 // Fs represents a remote s3 server
@@ -231,6 +232,7 @@ type Fs struct {
 	locationConstraint string           // location constraint of new buckets
 	sse                string           // the type of server-side encryption
 	storageClass       string           // storage class
+	prefix             string           // prefix to append to root for limiting scope even more
 }
 
 // Object describes a s3 object
@@ -392,6 +394,9 @@ func NewFs(name, root string) (fs.Fs, error) {
 	if *s3StorageClass != "" {
 		f.storageClass = *s3StorageClass
 	}
+	if *s3Prefix != "" {
+		f.prefix = *s3Prefix
+	}
 	if f.root != "" {
 		f.root += "/"
 		// Check to see if the object exists
@@ -471,12 +476,13 @@ func (f *Fs) list(dir string, level int, fn listFn) error {
 		return fs.ErrorLevelNotSupported
 	}
 	var marker *string
+	prefix := fmt.Sprintf("%s%s", root, f.prefix)
 	for {
 		// FIXME need to implement ALL loop
 		req := s3.ListObjectsInput{
 			Bucket:    &f.bucket,
 			Delimiter: &delimiter,
-			Prefix:    &root,
+			Prefix:    &prefix,
 			MaxKeys:   &maxKeys,
 			Marker:    marker,
 		}
