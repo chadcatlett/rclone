@@ -127,6 +127,12 @@ func init() {
 	})
 }
 
+// Globals
+var (
+	gcsSkipObjectAcl = fs.BoolP("gcs-skip-object-acl", "", false, "Skip ACL assignment on objects")
+	gcsSkipBucketAcl = fs.BoolP("gcs-skip-bucket-acl", "", false, "Skip ACL assignment on bucket creation")
+)
+
 // Fs represents a remote storage server
 type Fs struct {
 	name          string           // name of this remote
@@ -138,6 +144,8 @@ type Fs struct {
 	projectNumber string           // used for finding buckets
 	objectACL     string           // used when creating new objects
 	bucketACL     string           // used when creating new buckets
+	skipObjectAcl bool             // skip ACL assignment on objects
+	skipBucketAcl bool             // skip ACL assignment on bucket creation
 }
 
 // Object describes a storage object
@@ -247,6 +255,8 @@ func NewFs(name, root string) (fs.Fs, error) {
 	if f.bucketACL == "" {
 		f.bucketACL = "private"
 	}
+	f.skipObjectAcl = *gcsSkipObjectAcl
+	f.skipBucketAcl = *gcsSkipBucketAcl
 
 	// Create a new authorized Drive client.
 	f.client = oAuthClient
@@ -473,7 +483,11 @@ func (f *Fs) Mkdir(dir string) error {
 	bucket := storage.Bucket{
 		Name: f.bucket,
 	}
-	_, err = f.svc.Buckets.Insert(f.projectNumber, &bucket).PredefinedAcl(f.bucketACL).Do()
+	if f.skipBucketAcl {
+		_, err = f.svc.Buckets.Insert(f.projectNumber, &bucket).Do()
+	} else {
+		_, err = f.svc.Buckets.Insert(f.projectNumber, &bucket).PredefinedAcl(f.bucketACL).Do()
+	}
 	return err
 }
 
@@ -695,7 +709,13 @@ func (o *Object) Update(in io.Reader, src fs.ObjectInfo) error {
 		Updated:     modTime.Format(timeFormatOut), // Doesn't get set
 		Metadata:    metadataFromModTime(modTime),
 	}
-	newObject, err := o.fs.svc.Objects.Insert(o.fs.bucket, &object).Media(in, googleapi.ContentType("")).Name(object.Name).PredefinedAcl(o.fs.objectACL).Do()
+	var err error
+	var newObject *storage.Object
+	if o.fs.skipObjectAcl {
+		newObject, err = o.fs.svc.Objects.Insert(o.fs.bucket, &object).Media(in, googleapi.ContentType("")).Name(object.Name).Do()
+	} else {
+		newObject, err = o.fs.svc.Objects.Insert(o.fs.bucket, &object).Media(in, googleapi.ContentType("")).Name(object.Name).PredefinedAcl(o.fs.objectACL).Do()
+	}
 	if err != nil {
 		return err
 	}
